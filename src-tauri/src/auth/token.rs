@@ -6,6 +6,7 @@ struct Claims {
     exp: u64,
 }
 
+#[allow(dead_code)]
 pub fn is_expired(token: &str) -> bool {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

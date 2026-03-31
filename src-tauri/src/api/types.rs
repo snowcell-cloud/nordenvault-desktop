@@ -33,6 +33,7 @@ pub struct DesktopProvisionResponse {
     pub org_id: Uuid,
     pub machine_id: Uuid,
     pub machine_name: String,
+    #[allow(dead_code)]
     pub gateway_url: String,
     pub bucket_name: String,
     pub endpoint_url: String,

@@ -1,4 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
+#[cfg(not(debug_assertions))]
+use anyhow::anyhow;
 
 // In release builds use the macOS Keychain (secure, signed app won't prompt).
 // In debug builds use a plain JSON file so the unsigned binary never triggers
@@ -8,6 +10,7 @@ use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
 
+#[cfg(not(debug_assertions))]
 const SERVICE: &str = "nordenvault-desktop";
 const ACCESS_TOKEN_ACCOUNT: &str = "access_token";
 const REFRESH_TOKEN_ACCOUNT: &str = "refresh_token";

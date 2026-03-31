@@ -96,7 +96,7 @@ async fn build_s3_client(config: &Arc<Mutex<AgentConfig>>) -> Result<S3Client> {
     let region_str = cfg.region.clone().unwrap_or_else(|| "auto".into());
 
     let creds = Credentials::new(access_key_id, secret, None, None, "nordenvault");
-    let sdk_config = aws_config::from_env()
+    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .region(Region::new(region_str))
         .credentials_provider(creds)
         .endpoint_url(endpoint)
