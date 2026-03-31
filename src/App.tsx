@@ -45,12 +45,29 @@ function App() {
 
       if (!authState.isLoggedIn) {
         setView("login");
-      } else if (!cfg.machineId) {
-        setView("setup");
       } else {
-        const st = await api.getStatus();
-        setStatus(st);
-        setView("dashboard");
+        // Verify the local machine ID is still valid in the backend.
+        // If the record was lost (e.g. provisioned before backend tracked machines),
+        // clear it and show the setup page so the user re-provisions cleanly.
+        let verifiedMachineId = cfg.machineId;
+        if (cfg.machineId) {
+          try {
+            const desktopStatus = await api.checkDesktopStatus();
+            if (!desktopStatus.machineId) {
+              verifiedMachineId = null;
+            }
+          } catch {
+            // Offline or auth error — trust the local config for now
+          }
+        }
+
+        if (!verifiedMachineId) {
+          setView("setup");
+        } else {
+          const st = await api.getStatus();
+          setStatus(st);
+          setView("dashboard");
+        }
       }
     } catch {
       setView("login");
