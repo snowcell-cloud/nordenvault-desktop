@@ -11,7 +11,7 @@ use crate::state::{AgentStatus, AppState};
 #[cfg(debug_assertions)]
 const REDIRECT_URI: &str = crate::auth::callback_server::DEV_REDIRECT_URI;
 #[cfg(not(debug_assertions))]
-const REDIRECT_URI: &str = "nordenvault://auth/callback";
+const REDIRECT_URI: &str = "https://nordenvault.com/desktop-callback";
 
 // ---- Auth commands ----
 
