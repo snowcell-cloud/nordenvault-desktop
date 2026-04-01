@@ -9,7 +9,7 @@ mod watcher;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 use auth::{keychain, AuthState};
@@ -137,7 +137,6 @@ pub fn run() {
             // Register deep link URL scheme and listen for open-url events
             #[cfg(target_os = "macos")]
             {
-                use tauri::Emitter;
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let handle = app.handle().clone();
                 app.deep_link().on_open_url(move |event| {
