@@ -41,4 +41,10 @@ impl UploadQueue {
     pub async fn depth(&self) -> usize {
         self.inner.lock().await.len()
     }
+
+    /// Remove all queued jobs whose local path starts with the given prefix.
+    pub async fn remove_prefix(&self, prefix: &std::path::Path) {
+        let mut q = self.inner.lock().await;
+        q.retain(|job| !job.local_path.starts_with(prefix));
+    }
 }

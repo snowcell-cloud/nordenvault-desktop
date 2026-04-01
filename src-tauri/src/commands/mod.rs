@@ -256,8 +256,18 @@ pub async fn remove_folder(
     app_state: State<'_, AppState>,
 ) -> Result<AgentConfig, String> {
     let mut cfg = app_state.config.lock().await;
+    // Find the folder path before removing it so we can drain the queue
+    let folder_path = cfg
+        .watched_folders
+        .iter()
+        .find(|f| f.id == folder_id)
+        .map(|f| std::path::PathBuf::from(&f.path));
     cfg.watched_folders.retain(|f| f.id != folder_id);
     config::save(&cfg).map_err(|e| e.to_string())?;
+    // Drain any queued uploads for this folder
+    if let Some(path) = folder_path {
+        app_state.queue.remove_prefix(&path).await;
+    }
     Ok(cfg.clone())
 }
 
