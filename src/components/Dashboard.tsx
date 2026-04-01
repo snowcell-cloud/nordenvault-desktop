@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import * as api from "../api";
 import type { AgentConfig, AgentStatus, AuthStateDto } from "../types";
@@ -30,6 +31,14 @@ export default function Dashboard({
 }: Props) {
   const [addingFolder, setAddingFolder] = useState(false);
   const [togglingPause, setTogglingPause] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unlisten = listen<string>("update:available", (e) => {
+      setUpdateVersion(e.payload);
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
 
   async function handleAddFolder() {
     setAddingFolder(true);
@@ -80,6 +89,20 @@ export default function Dashboard({
 
   return (
     <>
+      {/* Update banner */}
+      {updateVersion && (
+        <div className="update-banner">
+          Update available: v{updateVersion} —{" "}
+          <a
+            href="https://nordenvault.com/download"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Download
+          </a>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="section">
         <div className="stats-row">

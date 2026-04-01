@@ -19,6 +19,7 @@ use upload::queue::UploadQueue;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -107,6 +108,28 @@ pub fn run() {
                 status,
                 paused,
             });
+
+            // Check for updates in the background (release builds only)
+            #[cfg(not(debug_assertions))]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use tauri_plugin_updater::UpdaterExt;
+                    match handle.updater() {
+                        Ok(updater) => match updater.check().await {
+                            Ok(Some(update)) => {
+                                eprintln!("[updater] New version available: {}", update.version);
+                                if let Some(win) = handle.get_webview_window("main") {
+                                    let _ = win.emit("update:available", &update.version);
+                                }
+                            }
+                            Ok(None) => eprintln!("[updater] App is up to date"),
+                            Err(e) => eprintln!("[updater] Check failed: {e}"),
+                        },
+                        Err(e) => eprintln!("[updater] Could not get updater: {e}"),
+                    }
+                });
+            }
 
             // Setup system tray
             tray::setup_tray(app.handle())?;
