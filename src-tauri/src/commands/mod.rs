@@ -197,6 +197,7 @@ pub async fn provision_machine(app_state: State<'_, AppState>) -> Result<AgentCo
     let mut cfg = app_state.config.lock().await;
     cfg.machine_id = Some(resp.machine_id);
     cfg.machine_name = Some(resp.machine_name.clone());
+    cfg.s3_prefix = Some(resp.s3_prefix.clone());
     cfg.org_id = Some(resp.org_id);
     cfg.credential_id = Some(resp.credential_id);
     cfg.bucket_name = Some(resp.bucket_name);
@@ -220,7 +221,7 @@ pub async fn add_folder(
     path: String,
     app_state: State<'_, AppState>,
 ) -> Result<AgentConfig, String> {
-    let machine_id = {
+    let s3_prefix = {
         let mut cfg = app_state.config.lock().await;
         if !cfg.watched_folders.iter().any(|f| f.path == path) {
             cfg.watched_folders.push(WatchedFolder {
@@ -230,22 +231,23 @@ pub async fn add_folder(
             });
             config::save(&cfg).map_err(|e| e.to_string())?;
         }
-        cfg.machine_id
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "unknown".into())
+        cfg.s3_prefix
+            .clone()
+            .or_else(|| cfg.machine_id.map(|id| format!("machines/{}", id)))
+            .unwrap_or_else(|| "machines/unknown".into())
     };
 
     let queue = app_state.queue.clone();
 
     // Start filesystem watcher for the new folder
     if let Some(watcher) =
-        crate::watcher::start_watcher_for_folder(&machine_id, &path, queue.clone())
+        crate::watcher::start_watcher_for_folder(&s3_prefix, &path, queue.clone())
     {
         std::mem::forget(watcher);
     }
 
     // Queue all existing files in the folder for immediate upload
-    crate::watcher::scan_existing_files(&machine_id, &path, queue).await;
+    crate::watcher::scan_existing_files(&s3_prefix, &path, queue).await;
 
     Ok(app_state.config.lock().await.clone())
 }
