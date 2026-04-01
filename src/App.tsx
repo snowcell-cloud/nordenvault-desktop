@@ -112,8 +112,8 @@ function App() {
       </header>
 
       {view === "login" && <LoginPage onLogin={handleLoginSuccess} />}
-      {view === "setup" && auth && (
-        <SetupPage auth={auth} onProvisioned={handleProvisioned} />
+      {view === "setup" && (
+        <SetupPage onProvisioned={handleProvisioned} />
       )}
       {view === "dashboard" && auth && config && (
         <Dashboard
