@@ -54,11 +54,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            libdbus-1-dev \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
             libssl-dev
+
+      - name: Bundle the verified restic engine
+        run: python scripts/prepare-restic.py ${{ matrix.target }}
+
+      - name: Verify encrypted backup and fresh restore
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --target ${{ matrix.target }} --lib
 
       - name: Prepare updater signing key
         shell: python

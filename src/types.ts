@@ -12,6 +12,8 @@ export interface WatchedFolder {
 }
 
 export interface AgentConfig {
+  backupMode: "unselected" | "private" | "standard";
+  encryptedRepository: string | null;
   machineId: string | null;
   machineName: string | null;
   orgId: string | null;

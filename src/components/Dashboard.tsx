@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import BackupPrivacy from "./BackupPrivacy";
 import * as api from "../api";
 import type { AgentConfig, AgentStatus, AuthStateDto } from "../types";
 import {
@@ -18,7 +19,7 @@ interface Props {
   status: AgentStatus;
   onConfigChange: (cfg: AgentConfig) => void;
   onStatusChange: (st: AgentStatus) => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
 }
 
 export default function Dashboard({
@@ -29,6 +30,7 @@ export default function Dashboard({
   onStatusChange,
   onLogout,
 }: Props) {
+  const [folderError, setFolderError] = useState("");
   const [addingFolder, setAddingFolder] = useState(false);
   const [togglingPause, setTogglingPause] = useState(false);
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -41,15 +43,15 @@ export default function Dashboard({
   }, []);
 
   async function handleAddFolder() {
-    setAddingFolder(true);
+    setAddingFolder(true); setFolderError("");
     try {
       const selected = await open({ directory: true, multiple: false });
       if (selected && typeof selected === "string") {
         const newConfig = await api.addFolder(selected);
         onConfigChange(newConfig);
       }
-    } catch {
-      // user cancelled
+    } catch (e) {
+      setFolderError(String(e));
     } finally {
       setAddingFolder(false);
     }
@@ -103,6 +105,7 @@ export default function Dashboard({
         </div>
       )}
 
+      <BackupPrivacy config={config} onChange={onConfigChange} />
       {/* Stats */}
       <div className="section">
         <div className="stats-row">
@@ -111,8 +114,8 @@ export default function Dashboard({
             <div className="stat-label">Folders</div>
           </div>
           <div className="stat-card">
-            <div className="stat-value">{status.queueDepth}</div>
-            <div className="stat-label">Pending</div>
+            <div className="stat-value">Automatic</div>
+            <div className="stat-label">Backup mode</div>
           </div>
         </div>
       </div>
@@ -142,8 +145,7 @@ export default function Dashboard({
             className="btn btn-ghost"
             style={{ marginTop: 6, fontSize: 11, color: "var(--text2)" }}
             onClick={async () => {
-              await api.resetDevice().catch(() => {});
-              onLogout();
+              await onLogout().catch(e => setFolderError(String(e)));
             }}
           >
             Reset device and sign out
@@ -158,13 +160,14 @@ export default function Dashboard({
           <button
             className="btn btn-ghost"
             onClick={handleAddFolder}
-            disabled={addingFolder}
+            disabled={addingFolder || config.backupMode === "unselected"}
             title="Add folder"
           >
             <PlusIcon size={14} />
           </button>
         </div>
 
+        {folderError && <p className="error-msg">{folderError}</p>}
         {config.watchedFolders.length === 0 ? (
           <div className="empty-state">
             No folders yet.
@@ -236,7 +239,7 @@ export default function Dashboard({
           </button>
           <button
             className="btn btn-ghost"
-            onClick={onLogout}
+            onClick={() => onLogout().catch(e => setFolderError(String(e)))}
             title={`Sign out (${auth.email ?? ""})`}
           >
             <LogOutIcon size={13} />

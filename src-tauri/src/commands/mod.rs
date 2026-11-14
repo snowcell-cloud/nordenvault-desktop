@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -12,7 +13,7 @@ use crate::auth::callback_server::{wait_for_callback, REDIRECT_URI};
 // ---- Auth commands ----
 
 #[tauri::command]
-pub async fn get_auth_state(app_state: State<'_, AppState>) -> Result<AuthStateDto, String> {
+pub async fn get_auth_state(app_state: State<'_, Arc<AppState>>) -> Result<AuthStateDto, String> {
     let auth = app_state.auth.lock().await;
     Ok(auth.to_dto())
 }
@@ -20,7 +21,7 @@ pub async fn get_auth_state(app_state: State<'_, AppState>) -> Result<AuthStateD
 #[tauri::command]
 pub async fn start_login(
     app: AppHandle,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<AppState>>,
 ) -> Result<String, String> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 51234))
         .await
@@ -41,7 +42,7 @@ pub async fn start_login(
     tauri::async_runtime::spawn(async move {
         let result = tokio::time::timeout(std::time::Duration::from_secs(300), async {
             let code = wait_for_callback(listener, &state_str).await.map_err(|e| e.to_string())?;
-            do_auth_exchange(code, state_str, &app.state::<AppState>()).await
+            do_auth_exchange(code, state_str, &app.state::<Arc<AppState>>()).await
         }).await;
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.show();
@@ -61,7 +62,7 @@ pub async fn start_login(
 pub async fn handle_auth_callback(
     code: String,
     state_param: String,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<AppState>>,
 ) -> Result<AuthStateDto, String> {
     do_auth_exchange(code, state_param, &app_state).await
 }
@@ -114,34 +115,40 @@ pub async fn do_auth_exchange(
 }
 
 #[tauri::command]
-pub async fn logout(app_state: State<'_, AppState>) -> Result<(), String> {
-    reset_all_state(&app_state).await;
-    Ok(())
+pub async fn logout(app_state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    reset_all_state(&app_state).await
 }
 
 /// Full factory reset: clears tokens, S3 secret, and device registration.
 /// Exposed as a command so the UI can offer a "Reset device" recovery option.
 #[tauri::command]
-pub async fn reset_device(app_state: State<'_, AppState>) -> Result<(), String> {
-    reset_all_state(&app_state).await;
-    Ok(())
+pub async fn reset_device(app_state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    reset_all_state(&app_state).await
 }
 
-async fn reset_all_state(app_state: &AppState) {
+async fn reset_all_state(app_state: &AppState) -> Result<(), String> {
+    let _operation = app_state.backup_operation.lock().await;
+    // Remove this device’s saved recovery key only on explicit sign-out/reset.
+    // The user confirmed an independent copy before the first backup.
+    let cfg = app_state.config.lock().await.clone();
+    if cfg.encrypted_repository.is_some() { crate::backup::forget_saved_key(&cfg)?; }
     keychain::delete_tokens();
     keychain::delete_s3_secret();
     config::delete();
-    let mut auth = app_state.auth.lock().await;
-    *auth = AuthState::default();
+    *app_state.auth.lock().await = AuthState::default();
     let mut cfg = app_state.config.lock().await;
     *cfg = config::AgentConfig::default();
+    *app_state.status.lock().await = AgentStatus::default();
+    app_state.paused.store(false, Ordering::Relaxed);
+    app_state.wake_backup.notify_one();
+    Ok(())
 }
 
 // ---- Provisioning ----
 
 #[tauri::command]
 pub async fn check_desktop_status(
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<AppState>>,
 ) -> Result<DesktopStatusResponse, String> {
     let client = ApiClient::new(API_BASE_URL.to_string(), app_state.auth.clone());
     client
@@ -151,7 +158,8 @@ pub async fn check_desktop_status(
 }
 
 #[tauri::command]
-pub async fn provision_machine(app_state: State<'_, AppState>) -> Result<AgentConfig, String> {
+pub async fn provision_machine(app_state: State<'_, Arc<AppState>>) -> Result<AgentConfig, String> {
+    let _operation = app_state.backup_operation.lock().await;
     let hostname = hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".into());
@@ -181,6 +189,9 @@ pub async fn provision_machine(app_state: State<'_, AppState>) -> Result<AgentCo
     } else {
         keychain::store_s3_secret(&resp.secret_access_key).map_err(|e| e.to_string())?;
     }
+    if cfg.org_id != Some(resp.org_id) || cfg.machine_id != Some(resp.machine_id) {
+        *cfg = AgentConfig::default();
+    }
     cfg.machine_id = Some(resp.machine_id);
     cfg.machine_name = Some(resp.machine_name.clone());
     cfg.s3_prefix = Some(resp.s3_prefix.clone());
@@ -198,64 +209,35 @@ pub async fn provision_machine(app_state: State<'_, AppState>) -> Result<AgentCo
 // ---- Config / folders ----
 
 #[tauri::command]
-pub async fn get_config(app_state: State<'_, AppState>) -> Result<AgentConfig, String> {
+pub async fn get_config(app_state: State<'_, Arc<AppState>>) -> Result<AgentConfig, String> {
     Ok(app_state.config.lock().await.clone())
 }
 
 #[tauri::command]
 pub async fn add_folder(
     path: String,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<AppState>>,
 ) -> Result<AgentConfig, String> {
-    let s3_prefix = {
-        let mut cfg = app_state.config.lock().await;
-        if !cfg.watched_folders.iter().any(|f| f.path == path) {
-            cfg.watched_folders.push(WatchedFolder {
-                id: uuid::Uuid::new_v4().to_string(),
-                path: path.clone(),
-                enabled: true,
-            });
-            config::save(&cfg).map_err(|e| e.to_string())?;
-        }
-        cfg.s3_prefix
-            .clone()
-            .or_else(|| cfg.machine_id.map(|id| format!("machines/{}", id)))
-            .unwrap_or_else(|| "machines/unknown".into())
-    };
-
-    let queue = app_state.queue.clone();
-
-    // Start filesystem watcher for the new folder
-    if let Some(watcher) =
-        crate::watcher::start_watcher_for_folder(&s3_prefix, &path, queue.clone())
-    {
-        std::mem::forget(watcher);
+    let mut cfg = app_state.config.lock().await;
+    if cfg.backup_mode == config::BackupMode::Unselected { return Err("Choose a backup mode before adding folders.".into()); }
+    if !std::path::Path::new(&path).is_absolute() || !std::path::Path::new(&path).is_dir() { return Err("Select a folder on this computer.".into()); }
+    if !cfg.watched_folders.iter().any(|f| f.path == path) {
+        cfg.watched_folders.push(WatchedFolder { id: uuid::Uuid::new_v4().to_string(), path, enabled: true });
+        config::save(&cfg).map_err(|e| e.to_string())?;
     }
-
-    // Queue all existing files in the folder for immediate upload
-    crate::watcher::scan_existing_files(&s3_prefix, &path, queue).await;
-
-    Ok(app_state.config.lock().await.clone())
+    app_state.wake_backup.notify_one();
+    Ok(cfg.clone())
 }
 
 #[tauri::command]
 pub async fn remove_folder(
     folder_id: String,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<AppState>>,
 ) -> Result<AgentConfig, String> {
     let mut cfg = app_state.config.lock().await;
-    // Find the folder path before removing it so we can drain the queue
-    let folder_path = cfg
-        .watched_folders
-        .iter()
-        .find(|f| f.id == folder_id)
-        .map(|f| std::path::PathBuf::from(&f.path));
     cfg.watched_folders.retain(|f| f.id != folder_id);
+    app_state.wake_backup.notify_one();
     config::save(&cfg).map_err(|e| e.to_string())?;
-    // Drain any queued uploads for this folder
-    if let Some(path) = folder_path {
-        app_state.queue.remove_prefix(&path).await;
-    }
     Ok(cfg.clone())
 }
 
@@ -263,11 +245,12 @@ pub async fn remove_folder(
 pub async fn toggle_folder(
     folder_id: String,
     enabled: bool,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<AppState>>,
 ) -> Result<AgentConfig, String> {
     let mut cfg = app_state.config.lock().await;
     if let Some(f) = cfg.watched_folders.iter_mut().find(|f| f.id == folder_id) {
         f.enabled = enabled;
+        app_state.wake_backup.notify_one();
     }
     config::save(&cfg).map_err(|e| e.to_string())?;
     Ok(cfg.clone())
@@ -276,22 +259,21 @@ pub async fn toggle_folder(
 // ---- Agent status ----
 
 #[tauri::command]
-pub async fn get_status(app_state: State<'_, AppState>) -> Result<AgentStatus, String> {
-    let mut status = app_state.status.lock().await;
-    status.queue_depth = app_state.queue.depth().await;
-    Ok(status.clone())
+pub async fn get_status(app_state: State<'_, Arc<AppState>>) -> Result<AgentStatus, String> {
+    Ok(app_state.status.lock().await.clone())
 }
 
 #[tauri::command]
-pub async fn pause_sync(app_state: State<'_, AppState>) -> Result<(), String> {
+pub async fn pause_sync(app_state: State<'_, Arc<AppState>>) -> Result<(), String> {
     app_state.paused.store(true, Ordering::Relaxed);
     app_state.status.lock().await.status = "paused".into();
     Ok(())
 }
 
 #[tauri::command]
-pub async fn resume_sync(app_state: State<'_, AppState>) -> Result<(), String> {
+pub async fn resume_sync(app_state: State<'_, Arc<AppState>>) -> Result<(), String> {
     app_state.paused.store(false, Ordering::Relaxed);
     app_state.status.lock().await.status = "idle".into();
+    app_state.wake_backup.notify_one();
     Ok(())
 }

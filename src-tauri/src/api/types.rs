@@ -15,6 +15,7 @@ pub struct UserResponse {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all(serialize = "camelCase"))]
 pub struct DesktopStatusResponse {
     pub has_organization: bool,
     pub has_storage: bool,
