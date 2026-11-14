@@ -17,12 +17,13 @@ export default function LoginPage({ onLogin }: Props) {
     setLoading(true);
     setError(null);
 
+    let cleanup = () => {};
     try {
       const authUrl = await api.startLogin();
 
       // Listen for the deep-link callback event emitted from Rust
-      const unlisten = await listen<void>("auth:complete", async () => {
-        unlisten();
+      const stopSuccess = await listen<void>("auth:complete", async () => {
+        cleanup();
         try {
           const auth = await api.getAuthState();
           if (auth.isLoggedIn) {
@@ -37,9 +38,17 @@ export default function LoginPage({ onLogin }: Props) {
         }
       });
 
+      const stopError = await listen<string>("auth:error", (event) => {
+        cleanup();
+        setError(event.payload);
+        setLoading(false);
+      });
+      cleanup = () => { stopSuccess(); stopError(); };
+
       // Open the auth URL in the system browser
       await openUrl(authUrl);
     } catch (e) {
+      cleanup();
       setError(String(e));
       setLoading(false);
     }

@@ -7,11 +7,7 @@ use crate::auth::{keychain, oauth, AuthState, AuthStateDto};
 use crate::config::{self, AgentConfig, WatchedFolder, API_BASE_URL};
 use crate::state::{AgentStatus, AppState};
 
-// In debug builds use a local HTTP server; in release use the custom URL scheme.
-#[cfg(debug_assertions)]
-const REDIRECT_URI: &str = crate::auth::callback_server::DEV_REDIRECT_URI;
-#[cfg(not(debug_assertions))]
-const REDIRECT_URI: &str = "https://nordenvault.com/desktop-callback";
+use crate::auth::callback_server::{wait_for_callback, REDIRECT_URI};
 
 // ---- Auth commands ----
 
@@ -26,6 +22,9 @@ pub async fn start_login(
     app: AppHandle,
     app_state: State<'_, AppState>,
 ) -> Result<String, String> {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 51234))
+        .await
+        .map_err(|_| "Another sign-in is already using the local callback. Please try again.".to_string())?;
     let (verifier, challenge) = oauth::generate_pkce();
     let state_str = oauth::generate_state();
 
@@ -39,29 +38,20 @@ pub async fn start_login(
 
     let url = oauth::build_auth_url(&challenge, &state_str, REDIRECT_URI);
 
-    // In debug mode, spawn a one-shot HTTP server to capture the callback.
-    #[cfg(debug_assertions)]
-    {
-        let app_for_cb = app.clone();
-        tauri::async_runtime::spawn(async move {
-            match crate::auth::callback_server::wait_for_callback().await {
-                Ok((code, state_param)) => {
-                    let state = app_for_cb.state::<AppState>();
-                    match do_auth_exchange(code, state_param, &state).await {
-                        Ok(_) => {
-                            if let Some(win) = app_for_cb.get_webview_window("main") {
-                                let _ = win.show();
-                                let _ = win.set_focus();
-                                let _ = win.emit("auth:complete", ());
-                            }
-                        }
-                        Err(e) => eprintln!("Auth exchange error: {}", e),
-                    }
-                }
-                Err(e) => eprintln!("Callback server error: {}", e),
+    tauri::async_runtime::spawn(async move {
+        let result = tokio::time::timeout(std::time::Duration::from_secs(300), async {
+            let code = wait_for_callback(listener, &state_str).await.map_err(|e| e.to_string())?;
+            do_auth_exchange(code, state_str, &app.state::<AppState>()).await
+        }).await;
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.show();
+            let _ = win.set_focus();
+            match result {
+                Ok(Ok(_)) => { let _ = win.emit("auth:complete", ()); }
+                _ => { let _ = win.emit("auth:error", "Sign-in could not be completed. Please try again."); }
             }
-        });
-    }
+        }
+    });
 
     Ok(url)
 }
@@ -91,7 +81,7 @@ pub async fn do_auth_exchange(
         pkce.code_verifier.clone()
     };
 
-    let identity = oauth::exchange_code( &code, &verifier, REDIRECT_URI)
+    let identity = oauth::exchange_code(&code, &verifier, REDIRECT_URI)
         .await
         .map_err(|e| e.to_string())?;
 

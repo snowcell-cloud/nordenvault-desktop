@@ -1,6 +1,6 @@
 [package]
 name = "nordenvault-desktop"
-version = "0.1.0"
+version = "0.1.8"
 description = "NordenVault Desktop Agent"
 authors = ["NordenVault"]
 edition = "2021"

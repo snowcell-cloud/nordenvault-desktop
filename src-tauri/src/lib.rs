@@ -135,55 +135,6 @@ pub fn run() {
             // Setup system tray
             tray::setup_tray(app.handle())?;
 
-            // Register deep link URL scheme and listen for open-url events
-            #[cfg(target_os = "macos")]
-            {
-                use tauri_plugin_deep_link::DeepLinkExt;
-                let handle = app.handle().clone();
-                app.deep_link().on_open_url(move |event| {
-                    for url in event.urls() {
-                        let url_str = url.to_string();
-                        eprintln!("deep-link: {}", url_str);
-
-                        if !url_str.starts_with("nordenvault://auth/callback") {
-                            continue;
-                        }
-
-                        let parsed = match url::Url::parse(&url_str) {
-                            Ok(u) => u,
-                            Err(e) => { eprintln!("deep-link parse error: {}", e); continue; }
-                        };
-
-                        let mut code = None;
-                        let mut state_param = None;
-                        for (k, v) in parsed.query_pairs() {
-                            match k.as_ref() {
-                                "code" => code = Some(v.to_string()),
-                                "state" => state_param = Some(v.to_string()),
-                                _ => {}
-                            }
-                        }
-
-                        if let (Some(code), Some(state_param)) = (code, state_param) {
-                            let handle = handle.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let app_state = handle.state::<AppState>();
-                                match commands::do_auth_exchange(code, state_param, &app_state).await {
-                                    Ok(_) => {
-                                        if let Some(win) = handle.get_webview_window("main") {
-                                            let _ = win.show();
-                                            let _ = win.set_focus();
-                                            let _ = win.emit("auth:complete", ());
-                                        }
-                                    }
-                                    Err(e) => eprintln!("Auth exchange error: {}", e),
-                                }
-                            });
-                        }
-                    }
-                });
-            }
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
