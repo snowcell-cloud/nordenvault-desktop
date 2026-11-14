@@ -60,11 +60,32 @@ jobs:
             patchelf \
             libssl-dev
 
+      - name: Prepare updater signing key
+        shell: python
+        env:
+          SIGNING_INPUT: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          import base64, os
+          from pathlib import Path
+
+          value = os.environ["SIGNING_INPUT"].strip()
+          # Some terminal copies include a trailing prompt marker or encoded newline.
+          for suffix in ("%0D%0A", "%0A", "%"):
+              value = value.removesuffix(suffix).rstrip()
+          decoded = base64.b64decode(value, validate=True).splitlines()
+          if len(decoded) != 2 or not decoded[0].startswith(b"untrusted comment:"):
+              raise ValueError("Invalid updater signing key format")
+          base64.b64decode(decoded[1], validate=True)
+          path = Path(os.environ["RUNNER_TEMP"]) / "nordenvault-updater.key"
+          with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as key:
+              key.write(value)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"TAURI_SIGNING_PRIVATE_KEY={path}\n")
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
         with:
           tagName: ${{ github.ref_name }}
@@ -73,3 +94,12 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+
+      - name: Remove temporary signing file
+        if: always()
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          (Path(os.environ["RUNNER_TEMP"]) / "nordenvault-updater.key").unlink(missing_ok=True)
