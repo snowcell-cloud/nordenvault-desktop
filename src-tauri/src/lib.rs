@@ -9,7 +9,7 @@ mod watcher;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tokio::sync::Mutex;
 
 use auth::{keychain, AuthState};
@@ -104,6 +104,7 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
+                    use tauri::Emitter;
                     use tauri_plugin_updater::UpdaterExt;
                     match handle.updater() {
                         Ok(updater) => match updater.check().await {
