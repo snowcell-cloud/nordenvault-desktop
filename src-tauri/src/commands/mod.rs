@@ -167,9 +167,20 @@ pub async fn provision_machine(app_state: State<'_, AppState>) -> Result<AgentCo
         .await
         .map_err(|e| e.to_string())?;
 
-    keychain::store_s3_secret(&resp.secret_access_key).map_err(|e| e.to_string())?;
-
     let mut cfg = app_state.config.lock().await;
+    if resp.secret_access_key == "(already provisioned)" {
+        let same_registration = cfg.org_id == Some(resp.org_id)
+            && cfg.machine_id == Some(resp.machine_id)
+            && cfg.credential_id == Some(resp.credential_id)
+            && cfg.access_key_id.as_deref() == Some(resp.access_key_id.as_str());
+        let has_secret = keychain::load_s3_secret()
+            .is_some_and(|secret| !secret.is_empty() && secret != "(already provisioned)");
+        if !same_registration || !has_secret {
+            return Err("This device is already registered, but its saved backup key is unavailable. Contact NordenVault support to reconnect it.".into());
+        }
+    } else {
+        keychain::store_s3_secret(&resp.secret_access_key).map_err(|e| e.to_string())?;
+    }
     cfg.machine_id = Some(resp.machine_id);
     cfg.machine_name = Some(resp.machine_name.clone());
     cfg.s3_prefix = Some(resp.s3_prefix.clone());
