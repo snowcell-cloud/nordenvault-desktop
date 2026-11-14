@@ -118,17 +118,22 @@ impl Repository {
 
     fn command(&self) -> Result<Command> {
         // Tauri installs externalBin next to the application executable on all desktop targets.
-        let mut directory = std::env::current_exe()?;
-        directory.pop();
-        #[cfg(test)]
-        if directory.ends_with("deps") {
-            directory.pop();
-        }
-        let bin = directory.join(if cfg!(windows) {
+        #[cfg(not(test))]
+        let bin = std::env::current_exe()?.with_file_name(if cfg!(windows) {
             "nordenvault-restic.exe"
         } else {
             "nordenvault-restic"
         });
+        // Cargo's test executable can be nested in a compiler-specific build directory.
+        // Exercise the exact pinned binary supplied to Tauri's bundle step.
+        #[cfg(test)]
+        let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries")
+            .join(format!(
+                "nordenvault-restic-{}{}",
+                env!("TAURI_ENV_TARGET_TRIPLE"),
+                std::env::consts::EXE_SUFFIX
+            ));
         ensure!(
             bin.is_file(),
             "Bundled backup engine is missing. Reinstall NordenVault."
