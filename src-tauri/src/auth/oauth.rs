@@ -20,22 +20,27 @@ pub fn generate_state() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+const ISSUER: &str = match option_env!("NORDENVAULT_KEYCLOAK_ISSUER") {
+    Some(issuer) => issuer,
+    None => "https://auth.nordenvault.com/realms/nordenvault",
+};
+const CLIENT_ID: &str = "nordenvault-desktop";
+
 pub fn build_auth_url(
-    workos_client_id: &str,
     code_challenge: &str,
     state: &str,
     redirect_uri: &str,
 ) -> String {
     format!(
-        "https://api.workos.com/user_management/authorize\
+        "{ISSUER}/protocol/openid-connect/auth\
         ?client_id={}\
         &redirect_uri={}\
         &response_type=code\
         &code_challenge={}\
         &code_challenge_method=S256\
         &state={}\
-        &provider=authkit",
-        workos_client_id,
+        &scope=openid%20email%20profile",
+        CLIENT_ID,
         urlencoding::encode(redirect_uri),
         code_challenge,
         state,
@@ -43,21 +48,20 @@ pub fn build_auth_url(
 }
 
 #[derive(Debug, serde::Deserialize)]
-pub struct WorkosTokenResponse {
+pub struct IdentityTokenResponse {
     pub access_token: String,
 }
 
 pub async fn exchange_code(
-    client_id: &str,
     code: &str,
     code_verifier: &str,
     redirect_uri: &str,
-) -> Result<WorkosTokenResponse> {
+) -> Result<IdentityTokenResponse> {
     let client = reqwest::Client::new();
     let resp = client
-        .post("https://api.workos.com/user_management/authenticate")
-        .json(&serde_json::json!({
-            "client_id": client_id,
+        .post(format!("{ISSUER}/protocol/openid-connect/token"))
+        .form(&serde_json::json!({
+            "client_id": CLIENT_ID,
             "code": code,
             "code_verifier": code_verifier,
             "grant_type": "authorization_code",
@@ -66,7 +70,7 @@ pub async fn exchange_code(
         .send()
         .await?
         .error_for_status()?
-        .json::<WorkosTokenResponse>()
+        .json::<IdentityTokenResponse>()
         .await?;
     Ok(resp)
 }

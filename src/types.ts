@@ -12,7 +12,6 @@ export interface WatchedFolder {
 }
 
 export interface AgentConfig {
-  workosClientId: string | null;
   machineId: string | null;
   machineName: string | null;
   orgId: string | null;

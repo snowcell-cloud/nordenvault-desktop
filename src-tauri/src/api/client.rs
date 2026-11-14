@@ -83,9 +83,9 @@ async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
 }
 
 impl ApiClient {
-    pub async fn post_workos_token(&self, workos_token: &str) -> Result<crate::api::types::NordenVaultTokenResponse> {
+    pub async fn post_identity_token(&self, workos_token: &str) -> Result<crate::api::types::NordenVaultTokenResponse> {
         let resp = self.http
-            .post(format!("{}/api/auth/bootstrap", self.base_url))
+            .post(format!("{}/api/auth/keycloak", self.base_url))
             .bearer_auth(workos_token)
             .send()
             .await?

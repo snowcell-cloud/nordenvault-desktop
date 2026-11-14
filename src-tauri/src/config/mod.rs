@@ -24,8 +24,6 @@ pub struct WatchedFolder {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentConfig {
-    /// Cached WorkOS client ID fetched from /api/desktop/config
-    pub workos_client_id: Option<String>,
     pub machine_id: Option<Uuid>,
     pub machine_name: Option<String>,
     pub s3_prefix: Option<String>,
@@ -41,7 +39,6 @@ pub struct AgentConfig {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            workos_client_id: None,
             machine_id: None,
             machine_name: None,
             s3_prefix: None,
@@ -54,31 +51,6 @@ impl Default for AgentConfig {
             watched_folders: vec![],
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct RemoteConfigResponse {
-    workos_client_id: String,
-}
-
-/// Fetch the WorkOS client ID from the backend and cache it in the config.
-/// Falls back to the cached value if the request fails (offline support).
-pub async fn fetch_and_cache_remote_config(config: &mut AgentConfig) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()?;
-
-    let resp = client
-        .get(format!("{}/api/desktop/config", API_BASE_URL))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<RemoteConfigResponse>()
-        .await?;
-
-    config.workos_client_id = Some(resp.workos_client_id);
-    save(config)?;
-    Ok(())
 }
 
 fn config_path() -> PathBuf {

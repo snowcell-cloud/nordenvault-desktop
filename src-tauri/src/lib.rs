@@ -48,16 +48,6 @@ pub fn run() {
             let status = Arc::new(Mutex::new(AgentStatus::default()));
             let paused = Arc::new(AtomicBool::new(false));
 
-            // Fetch remote config (workos_client_id) in background, update shared Arc
-            let config_for_fetch = config_arc.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut c = config_for_fetch.lock().await.clone();
-                match config::fetch_and_cache_remote_config(&mut c).await {
-                    Ok(_) => *config_for_fetch.lock().await = c,
-                    Err(e) => eprintln!("Could not fetch remote config (offline?): {}", e),
-                }
-            });
-
             // If we restored tokens, fetch the user profile so email/name are available
             let auth_for_profile = auth.clone();
             tauri::async_runtime::spawn(async move {

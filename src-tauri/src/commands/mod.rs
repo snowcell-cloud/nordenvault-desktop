@@ -37,15 +37,7 @@ pub async fn start_login(
         });
     }
 
-    let client_id = app_state
-        .config
-        .lock()
-        .await
-        .workos_client_id
-        .clone()
-        .ok_or("WorkOS client ID not loaded yet. Please try again in a moment.")?;
-
-    let url = oauth::build_auth_url(&client_id, &challenge, &state_str, REDIRECT_URI);
+    let url = oauth::build_auth_url(&challenge, &state_str, REDIRECT_URI);
 
     // In debug mode, spawn a one-shot HTTP server to capture the callback.
     #[cfg(debug_assertions)]
@@ -90,29 +82,22 @@ pub async fn do_auth_exchange(
     state_param: String,
     app_state: &AppState,
 ) -> Result<AuthStateDto, String> {
-    let (verifier, client_id) = {
+    let verifier = {
         let auth = app_state.auth.lock().await;
         let pkce = auth.pending_pkce.as_ref().ok_or("No pending login")?;
         if pkce.state != state_param {
             return Err("State mismatch — possible CSRF".into());
         }
-        let client_id = app_state
-            .config
-            .lock()
-            .await
-            .workos_client_id
-            .clone()
-            .ok_or("WorkOS client ID not loaded")?;
-        (pkce.code_verifier.clone(), client_id)
+        pkce.code_verifier.clone()
     };
 
-    let workos_resp = oauth::exchange_code(&client_id, &code, &verifier, REDIRECT_URI)
+    let identity = oauth::exchange_code( &code, &verifier, REDIRECT_URI)
         .await
         .map_err(|e| e.to_string())?;
 
     let client = ApiClient::new(API_BASE_URL.to_string(), app_state.auth.clone());
     let nv_tokens = client
-        .post_workos_token(&workos_resp.access_token)
+        .post_identity_token(&identity.access_token)
         .await
         .map_err(|e| e.to_string())?;
 
