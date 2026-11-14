@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::auth::AuthState;
 use crate::config::AgentConfig;
-use crate::upload::queue::UploadQueue;
+
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +29,8 @@ impl Default for AgentStatus {
 pub struct AppState {
     pub auth: Arc<Mutex<AuthState>>,
     pub config: Arc<Mutex<AgentConfig>>,
-    pub queue: Arc<UploadQueue>,
+    pub backup_operation: Mutex<()>,
+    pub wake_backup: tokio::sync::Notify,
     pub status: Arc<Mutex<AgentStatus>>,
     pub paused: Arc<AtomicBool>,
 }

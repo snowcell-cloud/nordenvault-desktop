@@ -29,3 +29,13 @@ export const toggleFolder = (folderId: string, enabled: boolean) =>
 export const getStatus = () => invoke<AgentStatus>("get_status");
 export const pauseSync = () => invoke<void>("pause_sync");
 export const resumeSync = () => invoke<void>("resume_sync");
+
+export const generateRecoveryKey = () => invoke<string>("generate_recovery_key");
+export const enableEncryptedBackup = (key: string, create: boolean) =>
+  invoke<AgentConfig>("enable_encrypted_backup", { key, create });
+export interface Snapshot { id: string; time: string }
+export const backupSnapshots = (key: string) => invoke<Snapshot[]>("backup_snapshots", { key });
+export const restoreSnapshot = (key: string, snapshot: string, destination: string) =>
+  invoke<string>("restore_snapshot", { key, snapshot, destination });
+
+export const enableStandardBackup = () => invoke<AgentConfig>("enable_standard_backup");

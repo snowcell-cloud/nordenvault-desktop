@@ -22,6 +22,9 @@ function App() {
 
   useEffect(() => {
     initApp();
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       if (auth?.isLoggedIn) {
         api.getStatus().then(setStatus).catch(() => {});
@@ -32,7 +35,7 @@ function App() {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [auth?.isLoggedIn]);
+  }, [auth?.isLoggedIn, auth?.email]);
 
   async function initApp() {
     try {
@@ -87,7 +90,7 @@ function App() {
   }
 
   async function handleLogout() {
-    await api.logout().catch(() => {});
+    await api.logout();
     setAuth(null);
     setConfig(null);
     setView("login");
@@ -107,7 +110,7 @@ function App() {
         <CloudIcon className="header-logo" />
         <span className="header-title">NordenVault</span>
         {view === "dashboard" && (
-          <StatusBadge status={status.status} />
+          <StatusBadge status={config && config.backupMode !== "unselected" ? status.status : "setup"} />
         )}
       </header>
 
@@ -131,7 +134,8 @@ function App() {
 
 function StatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = {
-    idle: "Up to date",
+    idle: "Ready",
+    setup: "Choose backup mode",
     syncing: "Syncing...",
     error: "Error",
     paused: "Paused",

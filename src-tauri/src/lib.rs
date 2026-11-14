@@ -4,8 +4,8 @@ mod commands;
 mod config;
 mod state;
 mod tray;
-mod upload;
-mod watcher;
+mod backup;
+mod standard;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -14,7 +14,6 @@ use tokio::sync::Mutex;
 
 use auth::{keychain, AuthState};
 use state::{AgentStatus, AppState};
-use upload::queue::UploadQueue;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,7 +43,6 @@ pub fn run() {
             }));
 
             let config_arc = Arc::new(Mutex::new(cfg.clone()));
-            let queue = Arc::new(UploadQueue::new());
             let status = Arc::new(Mutex::new(AgentStatus::default()));
             let paused = Arc::new(AtomicBool::new(false));
 
@@ -70,34 +68,13 @@ pub fn run() {
                 }
             });
 
-            // Start upload worker with cloned Arcs
-            let worker_queue = queue.clone();
-            let worker_status = status.clone();
-            let worker_config = config_arc.clone();
-            let worker_paused = paused.clone();
-
-            tauri::async_runtime::spawn(async move {
-                upload::worker::run_upload_worker(
-                    worker_queue,
-                    worker_status,
-                    worker_config,
-                    worker_paused,
-                )
-                .await;
+            let state = Arc::new(AppState {
+                auth, config: config_arc, status, paused,
+                backup_operation: Mutex::new(()),
+                wake_backup: tokio::sync::Notify::new(),
             });
-
-            // Start filesystem watchers from current config snapshot
-            let watchers = watcher::start_watcher(&cfg, queue.clone());
-            std::mem::forget(watchers);
-
-            // Register AppState with Tauri (must use handle in setup)
-            app.handle().manage(AppState {
-                auth,
-                config: config_arc,
-                queue,
-                status,
-                paused,
-            });
+            app.manage(state.clone());
+            tauri::async_runtime::spawn(backup::run(state));
 
             // Check for updates in the background (release builds only)
             #[cfg(not(debug_assertions))]
@@ -139,6 +116,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            backup::enable_standard_backup,
+            backup::generate_recovery_key,
+            backup::enable_encrypted_backup,
+            backup::backup_snapshots,
+            backup::restore_snapshot,
             commands::get_auth_state,
             commands::start_login,
             commands::handle_auth_callback,
