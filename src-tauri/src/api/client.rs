@@ -34,7 +34,11 @@ impl ApiClient {
         if needs_refresh {
             let refresh_token = auth.refresh_token.as_deref()
                 .ok_or_else(|| anyhow!("No refresh token"))?;
-            let pair = token::refresh(refresh_token, &self.base_url).await?;
+            let pair = token::refresh(refresh_token, &self.base_url).await.map_err(|error| {
+                if error.downcast_ref::<reqwest::Error>().and_then(|e| e.status()) == Some(reqwest::StatusCode::UNAUTHORIZED) {
+                    anyhow!("SIGN_IN_REQUIRED")
+                } else { error }
+            })?;
             keychain::store_tokens(&pair.access_token, &pair.refresh_token)?;
             auth.access_token = Some(pair.access_token.clone());
             auth.refresh_token = Some(pair.refresh_token);
@@ -74,6 +78,7 @@ impl ApiClient {
 }
 
 async fn check_status(resp: reqwest::Response) -> Result<reqwest::Response> {
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED { return Err(anyhow!("SIGN_IN_REQUIRED")); }
     if resp.status().is_client_error() || resp.status().is_server_error() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -87,6 +92,7 @@ impl ApiClient {
         let resp = self.http
             .post(format!("{}/api/auth/keycloak", self.base_url))
             .bearer_auth(workos_token)
+            .header("X-NordenVault-Client-Version", env!("CARGO_PKG_VERSION"))
             .send()
             .await?
             .error_for_status()?

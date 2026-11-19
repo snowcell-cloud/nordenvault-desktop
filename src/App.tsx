@@ -56,11 +56,16 @@ function App() {
         if (cfg.machineId) {
           try {
             const desktopStatus = await api.checkDesktopStatus();
-            if (!desktopStatus.machineId) {
+            if (!desktopStatus.machineId || desktopStatus.requiresReconnect) {
               verifiedMachineId = null;
             }
-          } catch {
-            // Offline or auth error — trust the local config for now
+          } catch (error) {
+            if (String(error).includes("SIGN_IN_REQUIRED")) {
+              setAuth(null);
+              setView("login");
+              return;
+            }
+            // Network outages do not erase this device's backup configuration.
           }
         }
 
