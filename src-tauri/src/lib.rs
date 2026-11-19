@@ -147,7 +147,7 @@ mod glib_security_regression {
     fn variant_string_iteration_has_valid_forward_and_reverse_pointers() {
         let values = vec!["first", "second", "third"];
         let variant = values.to_variant();
-        assert_eq!(variant.str_iter().unwrap().collect::<Vec<_>>(), values);
-        assert_eq!(variant.str_iter().unwrap().rev().collect::<Vec<_>>(), vec!["third", "second", "first"]);
+        assert_eq!(variant.array_iter_str().unwrap().collect::<Vec<_>>(), values);
+        assert_eq!(variant.array_iter_str().unwrap().rev().collect::<Vec<_>>(), vec!["third", "second", "first"]);
     }
 }
