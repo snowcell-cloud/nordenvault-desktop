@@ -128,6 +128,14 @@ pub async fn reset_device(app_state: State<'_, Arc<AppState>>) -> Result<(), Str
 
 async fn reset_all_state(app_state: &AppState) -> Result<(), String> {
     let _operation = app_state.backup_operation.lock().await;
+    {
+        // Serialize sign-out with refresh and revoke before removing local state.
+        let auth = app_state.auth.lock().await;
+        if let Some(token) = auth.refresh_token.as_ref().or(auth.access_token.as_ref()) {
+            crate::auth::token::revoke(token, API_BASE_URL).await
+                .map_err(|_| "Could not securely sign out. Check your connection and try again.".to_string())?;
+        }
+    }
     // Remove this device’s saved recovery key only on explicit sign-out/reset.
     // The user confirmed an independent copy before the first backup.
     let cfg = app_state.config.lock().await.clone();
@@ -151,8 +159,11 @@ pub async fn check_desktop_status(
     app_state: State<'_, Arc<AppState>>,
 ) -> Result<DesktopStatusResponse, String> {
     let client = ApiClient::new(API_BASE_URL.to_string(), app_state.auth.clone());
+    let machine_id = app_state.config.lock().await.machine_id;
+    let path = machine_id.map(|id| format!("/api/desktop/status?machine_id={}", id))
+        .unwrap_or_else(|| "/api/desktop/status".to_string());
     client
-        .get("/api/desktop/status")
+        .get(&path)
         .await
         .map_err(|e| e.to_string())
 }

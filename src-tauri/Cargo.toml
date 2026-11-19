@@ -1,6 +1,6 @@
 [package]
 name = "nordenvault-desktop"
-version = "0.1.13"
+version = "0.1.14"
 description = "NordenVault Desktop Agent"
 authors = ["NordenVault"]
 edition = "2021"
@@ -23,8 +23,8 @@ tauri-plugin-updater = "2"
 
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-aws-sdk-s3 = "1"
-aws-config = "1"
+aws-sdk-s3 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "http-1x"] }
+aws-config = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-credential-types = "1"
 walkdir = "2"
 notify-debouncer-mini = "0.4"
@@ -33,7 +33,6 @@ serde_json = "1"
 base64 = "0.22"
 sha2 = "0.10"
 rand = "0.8"
-jsonwebtoken = "9"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
@@ -52,3 +51,10 @@ features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rus
 
 [dev-dependencies]
 tempfile = "3"
+
+# GTK 3 still requires GLib 0.18; use the upstream iterator-safety backport.
+[patch.crates-io]
+glib = { path = "vendor/glib" }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+glib = "0.18.5"

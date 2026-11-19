@@ -61,3 +61,49 @@ pub async fn refresh(refresh_token: &str, api_base: &str) -> Result<TokenRespons
 }
 
 use base64::Engine as _;
+
+/// Revoke the application session before deleting this device's saved tokens.
+pub async fn revoke(token: &str, api_base: &str) -> Result<()> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()?
+        .post(format!("{}/api/auth/logout", api_base))
+        .json(&serde_json::json!({ "refresh_token": token }))
+        .send().await?.error_for_status()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod session_tests {
+    use std::io::{Read, Write};
+    fn endpoint(status: &str) -> (String, std::thread::JoinHandle<()>) {
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", server.local_addr().unwrap());
+        let status = status.to_string();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = server.accept().unwrap();
+            stream.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
+            let mut data = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !String::from_utf8_lossy(&data).contains("synthetic-session-token") {
+                let size = stream.read(&mut buf).unwrap();
+                assert!(size > 0); data.extend_from_slice(&buf[..size]);
+            }
+            let request = String::from_utf8_lossy(&data);
+            assert!(request.starts_with("POST /api/auth/logout HTTP/1.1"));
+            assert!(request.contains("\"refresh_token\":\"synthetic-session-token\""));
+            write!(stream, "HTTP/1.1 {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", status).unwrap();
+        });
+        (url, handle)
+    }
+    #[tokio::test]
+    async fn successful_revoke_accepts_empty_204() {
+        let (url, server) = endpoint("204 No Content");
+        super::revoke("synthetic-session-token", &url).await.unwrap(); server.join().unwrap();
+    }
+    #[tokio::test]
+    async fn failed_revoke_is_reported_to_signout_caller() {
+        let (url, server) = endpoint("503 Service Unavailable");
+        assert!(super::revoke("synthetic-session-token", &url).await.is_err()); server.join().unwrap();
+    }
+}

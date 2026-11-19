@@ -139,3 +139,15 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod glib_security_regression {
+    use glib::variant::ToVariant;
+    #[test]
+    fn variant_string_iteration_has_valid_forward_and_reverse_pointers() {
+        let values = vec!["first", "second", "third"];
+        let variant = values.to_variant();
+        assert_eq!(variant.array_iter_str().unwrap().collect::<Vec<_>>(), values);
+        assert_eq!(variant.array_iter_str().unwrap().rev().collect::<Vec<_>>(), vec!["third", "second", "first"]);
+    }
+}

@@ -19,6 +19,8 @@ pub struct UserResponse {
 pub struct DesktopStatusResponse {
     pub has_organization: bool,
     pub has_storage: bool,
+    #[serde(default)]
+    pub requires_reconnect: bool,
     pub machine_id: Option<Uuid>,
     pub machine_name: Option<String>,
 }

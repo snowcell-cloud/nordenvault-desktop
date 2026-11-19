@@ -35,6 +35,7 @@ export interface AgentStatus {
 export interface DesktopStatusResponse {
   hasOrganization: boolean;
   hasStorage: boolean;
+  requiresReconnect: boolean;
   machineId: string | null;
   machineName: string | null;
 }
