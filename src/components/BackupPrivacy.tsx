@@ -65,8 +65,13 @@ export default function BackupPrivacy({ config, onChange }: { config: AgentConfi
       <button className="btn" disabled={busy} onClick={close}>Cancel</button>
     </>}
     {mode !== "closed" && mode !== "standard" && <>
+      {(mode === "create" || mode === "connect") && <div className="recovery-key-warning" role="alert">
+        <p><strong>Save your recovery key before continuing</strong></p>
+        <p>If you lose every copy of this key, your encrypted backups become permanently unreadable. NordenVault cannot recover them, even after a password reset.</p>
+        <p>Keep a separate copy in a password manager or another safe place outside your backup folders.</p>
+      </div>}
       {mode === "create" ? <>
-        <p>Your computer remembers this key for daily backups. Save a spare copy in a password manager or on paper, outside your backup folders. On a replacement computer, sign in and use the key to restore. Snowcell cannot replace a lost key.</p>
+        <p>This computer keeps a working copy of the key for daily backups. You need your saved copy to restore on a replacement computer.</p>
         <label>Recovery key<textarea readOnly value={key} spellCheck={false} onFocus={e => e.target.select()} /></label>
         <label>Confirm the last 6 characters from your saved copy<input autoComplete="off" value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label>
       </> : <>
